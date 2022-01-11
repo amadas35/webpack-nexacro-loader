@@ -1,5 +1,5 @@
 
-const getfiles = require("./getfiles.js");
+const getfiles = require("../utils/getfiles.js");
 
 const file_filter = /\.xfdl$/i;
 
@@ -8,7 +8,7 @@ const file_filter = /\.xfdl$/i;
 // - resource   : copy file as resource
 // - url        : url only, no generate
 module.exports = function (serviceRoot, options) {
-  return { files: getfiles(serviceRoot, file_filter, options && options.recursively), type: 'source' };
+  return { files: getfiles(serviceRoot, file_filter, options && options.recursively, false), type: 'source' };
 };
 
 module.exports.version = "1.0";
