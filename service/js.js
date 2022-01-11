@@ -8,7 +8,7 @@ const file_filter = /\.(js|xjs|mjs)$/i;
 // - resource   : copy file as resource
 module.exports = function (serviceRoot, options) {
   return { 
-    files: getfiles(serviceRoot, file_filter, options && options.recursively, ext => !(/xjs$/i.test(ext))), 
+    files: getfiles(serviceRoot, file_filter, options && options.recursively, ext => (/xjs$/i.test(ext) ? "appendext=js" : "raw")), 
     type: 'mixed' 
   };
 };

@@ -1,20 +1,24 @@
 const path = require("path");
 const fs = require("fs");
 
-function checkRaw (checker, extname) {
-  if (checker === undefined || checker === null)
-    return false;
+function getQueryString (query, extname) {
+  if (query === undefined || query === null)
+    return "";
 
-  if (typeof checker == 'boolean')    return checker;
-  if (typeof checker === 'function')  return checker(extname);
-  if (typeof checker === "object") {
-    if (checker.constructor == RegExp)  return checker.test(extname);
+  var params = query;
+  if (typeof query === 'function')  params = query(extname);
+  if (typeof params == 'string')    
+    return params.length > 0 ? `?${params}` : '';
+
+  if (typeof params === "object") {
+    const urlParams = new URLSearchParams(params);
+    return `?${urlParams.toString()}`;
   }
 
-  return Boolean(isRaw);
+  return "";
 }
 
-function getFiles(root, filter, bRecursively, rawChecker) {
+function getFiles(root, filter, bRecursively, query) {
 
   var files = [], dirs = [];
 
@@ -28,9 +32,7 @@ function getFiles(root, filter, bRecursively, rawChecker) {
         if (!filter || (filter && filter.test(ext)))
         {
           var filePath = path.resolve(root, entry.name);
-          if (checkRaw(rawChecker, ext))
-            filePath += '?raw';
-
+          filePath += getQueryString(query, ext);
           files.push(filePath);
         }
     }
@@ -40,7 +42,7 @@ function getFiles(root, filter, bRecursively, rawChecker) {
   {
     dirs.forEach(dir => {
         const subpath = `${root}${path.sep}${dir}`;
-        files = files.concat(getFiles(subpath, filter, bRecursively, rawChecker));
+        files = files.concat(getFiles(subpath, filter, bRecursively, query));
     });
   }
   

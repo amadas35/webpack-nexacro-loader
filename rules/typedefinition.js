@@ -59,7 +59,7 @@ function loadFilesOfService (service, rootPath) {
 
   try {
     const service_loader = require(`../service/${type.toLowerCase()}.js`);
-    const loadinfo = service_loader(rootPath, {recursively: JSON.parse(service.$.include_subdir)});
+    const loadinfo = service_loader(rootPath, {type: type, prefix: service.$.prefixid, recursively: JSON.parse(service.$.include_subdir)});
 
     if (loadinfo && loadinfo.files) {
       return loadinfo.files;

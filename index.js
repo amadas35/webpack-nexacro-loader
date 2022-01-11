@@ -1,13 +1,17 @@
 
 const path = require("path");  
 var parseString = require('xml2js').parseString;
+const getdirs = require("./utils/getdirs.js");
 
-const regexp_raw = /\?\braw\b/i;
+const regexp_raw = /\braw\b/i;
+const regexp_appendext = /\?\bappendext\b/i;
+
 const default_rule = {
     'project': './rules/xprj.js',
     'env': './rules/env.js',
     'typedefinition': './rules/typedefinition.js',
     'appvariables': './rules/appvariables.js',
+    'xcss': './rules/xcss.js',
 };
 
 module.exports = function(text) {
@@ -21,13 +25,13 @@ module.exports = function(text) {
     const res_base = path.basename(this.resourcePath);
     const res_dir = path.dirname(this.resourcePath);
 
-    var should_has_exports = false, output_root = '.';
+    var should_has_exports = false, output_relative_path = '.';
     if (options) {
         should_has_exports = (options.type == "export");
 
         if (options.projectRoot) {
           const rel_path = path.relative(options.projectRoot, res_dir);
-          if (rel_path !== '') output_root = rel_path;
+          if (rel_path !== '') output_relative_path = rel_path;
         }
 
         if ('rules' in options)
@@ -41,13 +45,45 @@ module.exports = function(text) {
     if (regexp_raw.test(this.resourceQuery))
     {
       // copy file
-      const output_filename = `${output_root}${path.sep}${res_base}`;
+      const output_filename = `${output_relative_path}${path.sep}${res_base}`;
       this.emitFile(output_filename, text);
       callback(null, output_filename);
     }
     else
     {
-      const output_filename = `${output_root}${path.sep}${res_base}.js`;
+      const input_url = new URL(this.resource);
+      const file_params = new URLSearchParams(input_url.searchParams);
+
+      var appendext = file_params.get('appendext');
+      if (!appendext) appendext = 'js';
+
+      var param_target = file_params.get('target'), output_dirs;
+      if (param_target)
+      {
+        const relative_target_path = `${output_relative_path}${path.sep}${param_target}`;
+        if (file_params.has('target_filter'))
+        {
+            const target_filter = file_params.get('target_filter');
+            const absolute_target_path = path.resolve(res_dir, param_target);
+
+            output_dirs = [];
+            const target_dirs = getdirs(absolute_target_path, target_filter ? target_filter : undefined);
+            target_dirs.forEach(dir => {
+                const rel_path = path.relative(res_dir, dir);
+                output_dirs.push(`${output_relative_path}${rel_path !== '' ? path.sep : ''}${rel_path}`);                    
+            });
+        }
+        else
+        {
+            output_relative_path = relative_target_path;
+        }
+      }
+
+      var name_prefix = file_params.get('prefix');
+      if (!name_prefix) name_prefix = '';
+
+      //const output_filename = `${output_dirs ? "" : (output_relative_path + path.sep)}${res_base}${appendext ? '.'+appendext : ''}`;
+      const output_filename = `${res_base}${appendext ? '.'+appendext : ''}`;
 
       var self = this;
       parseString(text, options, async function(err, result) {      
@@ -91,7 +127,7 @@ module.exports = function(text) {
             }
             else
             {
-              generated = JSON.stringify(result);  
+              generated = JSON.stringify(result, null, 2);  
             }
         }
 
@@ -102,16 +138,26 @@ module.exports = function(text) {
           callback(null, generated);
         }
         else {
+            var output_filepath = `${output_relative_path}${path.sep}${output_filename}`;
+
           if (generated) {
-              self.emitFile(output_filename, generated);
+              if (output_dirs && output_dirs.length > 0)
+              {
+                output_dirs.forEach(target => {
+                    const target_path = `${target}${path.sep}${output_filename}`;
+                    //console.log(`>> emit: ${target_path}`);
+                    self.emitFile(target_path, generated);
+                    output_filepath = target_path;
+                });
+              }
+              else
+              {                
+                self.emitFile(output_filepath, generated);
+              }
           }
 
-          callback(null, output_filename);
+          callback(null, output_filepath);
         }
       });
     }
 };
-
-module.exports.raw = true;
-
-
