@@ -1,7 +1,7 @@
 
 const path = require("path");  
-var parseString = require('xml2js').parseString;
-//var xml2js = require('xml-js').xml2js;
+//const parseString = require('xml2js').parseString;
+const xml2js = require('xml-js').xml2js;
 const getdirs = require("./utils/getdirs.js");
 
 const default_rule = {
@@ -10,7 +10,7 @@ const default_rule = {
     'typedefinition': './rules/typedefinition.js',
     'appvariables': './rules/appvariables.js',
     'xcss': './rules/xcss.js',
-    /*'fdl': './rules/xfdl.js',*/
+    'fdl': './rules/xfdl.js',
 };
 
 function emitFileToOutDirs(loader, outdirs, filename, content) {
@@ -27,13 +27,13 @@ function emitFileToOutDirs(loader, outdirs, filename, content) {
   return output_filepath;
 }
 
-module.exports = function(text) {
+module.exports = async function(text) {
     var callback = this.async();
     this.cacheable && this.cacheable();
     var options = this.getOptions();
     var template_rule = Object.assign({}, default_rule);
 
-    console.log(`> load ${this.resource}`);
+    console.log(`> load ${this.resourcePath}`);
 
     const path_info = path.parse(this.resourcePath);
 
@@ -87,7 +87,6 @@ module.exports = function(text) {
       output_dirs.push(emit_filepath);
     }
 
-    
     if (israw)
     {
       // copy file
@@ -95,96 +94,65 @@ module.exports = function(text) {
       callback(null, output_filepath);
     }
     else {
-      /*const parse_option = {
-        compact: false, 
-        ignoreComment: true, 
-        ignoreDeclaration: true, 
-        ignoreInstruction: true, 
-        ignoreDoctype: true,
-        attributesKey: '$',
-        textKey: '_',
-        cdataKey: '_',
-      };
       try {
-        const result = xml2js(text, parse_option);
-
-        const generated_js = JSON.stringify(result, null, 2);  
-
-        if (should_has_exports && generated_js)
-        generated_js = "module.exports=" + generated_js;
-
-        var is_inline = false;
-        if (is_inline && generated_js) {
-          callback(null, generated_js);
+        const parse_option = {
+          compact: false,
+          ignoreDeclaration: true,
+          ignoreInstruction: true,
+          ignoreComment: true,
+          ignoreDoctype: true,
+          attributesKey: '$',
+          textKey: '_',
+          cdataKey: '_'
         }
-        else if (generated_js) {
-          var output_filepath = emitFileToOutDirs(this, output_dirs, emit_filename, generated_js);
-          callback(null, output_filepath);
-        }
-        else {
-          output_filepath = path.join(emit_filepath, emit_filename);
-          callback(null, output_filepath);
-        }
-      }
-      catch (err) {
-        callback(err);
-      }
-*/
-      var self = this;
-
-      // for keep component order
-      const parse_option = Object.assign({explicitChildren: true, preserveChildrenOrder: true}, options);
-      parseString(text, parse_option, async function(err, result) {      
-        if (err) return callback(err);
 
         var generated, is_inline = false;
+        var result = xml2js(text, parse_option);
 
-        const root_tags = Object.keys(result);
+        if (!result || !result.elements || result.elements.length == 0) {
+          return callback(new Error(`unknown file '${self.resourcePath}'`));
+        }
+
+        const root_element = result.elements.find(element => element.type === "element");
+        if (!root_element) {
+          return callback(new Error(`unknown file '${self.resourcePath}'`));
+        }
+
+        const root_name = root_element.name;
         const rule_names = Object.keys(template_rule);
 
-        const root_tag_cnt = root_tags.length;
-        if (root_tag_cnt == 0)
-            return callback(new Error(`unknown file '${self.resource}'`));
+        const selected_rule = rule_names.find(name => root_name.toLocaleLowerCase() === name);
+        if (selected_rule) {
+          const rule_path = path.resolve(__dirname, template_rule[selected_rule]);
+          const rule_loader = require(rule_path);
 
-        for (var idx = 0;idx<root_tag_cnt;idx++) {
-
-            const tagname = root_tags[idx];
-            const rule_name = rule_names.find(name => tagname.toLocaleLowerCase() === name);
-            if (rule_name)
-            {
-              const rule_path = path.resolve(__dirname, template_rule[rule_name]);
-              const rule_loader = require(rule_path);
-
-              var dependencies_to_import = [], proc_error;
-              rule_loader(self.resourcePath, result[tagname], parse_option, (errobj, proc_result, dependencies) => {
-                if (errobj) {
-                  proc_error = errobj;
-                  return;
-                }
-
-                generated = proc_result;
-                dependencies_to_import = dependencies;
-              });
-
-              if (proc_error)
-              {
-                return callback(proc_error);
-              }
-
-              if (dependencies_to_import) {
-                const dep_cnt = dependencies_to_import.length;
-
-                for (var dep_idx=0;dep_idx<dep_cnt;dep_idx++) {
-                    const dep_url = dependencies_to_import[dep_idx];
-                    const imported = await self.importModule(dep_url);
-                }
-              }
+          var dependencies_to_import = [], proc_error;
+          rule_loader(this.resourcePath, root_element, options, (errobj, proc_result, dependencies) => {
+            if (errobj) {
+              proc_error = errobj;
+              return;
             }
-            else
-            {
-              generated = JSON.stringify(result, null, 2);  
+
+            generated = proc_result;
+            dependencies_to_import = dependencies;
+          });
+
+          if (proc_error) {
+            return callback(proc_error);
+          }
+
+          if (dependencies_to_import) {
+            const dep_cnt = dependencies_to_import.length;
+
+            for (var dep_idx=0;dep_idx<dep_cnt;dep_idx++) {
+                const dep_url = dependencies_to_import[dep_idx];
+                const imported = await this.importModule(dep_url);
             }
+          }
         }
+        else {
+          generated = JSON.stringify(result, null, 2);
+        }        
 
         if (should_has_exports && generated)
           generated = "module.exports=" + generated;
@@ -192,17 +160,16 @@ module.exports = function(text) {
         if (is_inline && generated) {
           callback(null, generated);
         }
-        else {
-          var output_filepath;
-          if (generated) {
-            output_filepath = emitFileToOutDirs(self, output_dirs, emit_filename, generated);
-          }
-          else {
-            output_filepath = path.join(emit_filepath, emit_filename);
-          }
-
+        else if (generated) {
+          const output_filepath = emitFileToOutDirs(this, output_dirs, emit_filename, generated);
           callback(null, output_filepath);
         }
-      });
+        else {
+          callback(null, path.join(emit_filepath, emit_filename));
+        }
+      }
+      catch (err) {
+        return callback(err);
+      }
     }
 };

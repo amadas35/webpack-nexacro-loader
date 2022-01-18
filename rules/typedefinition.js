@@ -87,41 +87,42 @@ module.exports = function (resourcePath, typedefNode, options, callback) {
   if (version < "3.0")
       return callback(new Error(`${version} is not support typedefinition version. (should >= 3.0)`));
 
+  if (!typedefNode.elements || typedefNode.elements.length == 0)
+    return callback(new Error(`Cannot found 'typedefinition' information.`));
+  
   // dependency modules info
-  const modulesNode = typedefNode.Modules;
-  if (!modulesNode || modulesNode.length == 0)
-      return callback(new Error(`Cannot found 'Modules' information in ${resourcePath}.`));
+  const modulesNode = typedefNode.elements.find(element => element.name === "Modules");
+  if (!modulesNode || !modulesNode.elements || modulesNode.elements.length == 0)
+    return callback(new Error(`Cannot found 'Modules' information in ${resourcePath}.`));
 
   // [TODO] generate bundle info and script link from modules info.
 
   // component type definition
   var components;
-  const componentsNode = typedefNode.Components;
-  if (componentsNode && componentsNode.length > 0)
-  {
-    components = componentsNode[0].Component || [];
-  }
+  const componentsNode = typedefNode.elements.find(element => element.name === "Components");
+  if (componentsNode)
+    components = componentsNode.elements || [];
 
   // service info
   var services;
-  const servicesNode = typedefNode.Services;
-  if (servicesNode && servicesNode.length > 0)
+  const servicesNode = typedefNode.elements.find(element => element.name === "Services");
+  if (servicesNode)
   {
-    services = servicesNode[0].Service || [];
+    services = servicesNode.elements || [];
   }
 
   // custom proptocol definition
   var protocols;
-  const protocolsNode = typedefNode.Protocols;
-  if (protocolsNode && protocolsNode.length > 0)
+  const protocolsNode = typedefNode.elements.find(element => element.name === "Protocols");
+  if (protocolsNode)
   {
-    protocols = protocolsNode[0].Protocol || [];
+    protocols = protocolsNode.elements || [];
   }
   
   // update info --> for nre bootstrap
   var update;
-  const updateNode = typedefNode.Update;
-  if (updateNode && updateNode.length > 0)
+  const updateNode = typedefNode.elements.find(element => element.name === "Update");
+  if (updateNode)
   {
     update = [];
   }

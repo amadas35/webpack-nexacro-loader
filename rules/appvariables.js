@@ -29,9 +29,12 @@ function template_dataobject_to_js (dataobject, padleft) {
   }
 
   // set contents
-  const contents = dataobject.Contents;
-  if (contents && contents.length > 0)
-    contents.forEach(content => (code += `${left_pad}obj._setContents(${content});\n`));
+  if (dataobject.elements) {
+    const contents = dataobject.elements.find(element => element.name === "Contents");
+    if (contents && contents.elements) {
+      contents.elements.forEach(content => (code += `${left_pad}obj._setContents(${content._});\n`));
+    }
+  }
 
   if (event_code)
     code += event_code;
@@ -75,55 +78,60 @@ function template_dataset_to_js (dataset, padleft) {
   }
 
   // set contents
-  var content_string;
+  if (dataset.elements) {
+    const colinfoNode = dataset.elements.find(element => element.name === "ColumnInfo");
+    if (colinfoNode && colinfoNode.elements) {
+      var content_string;
 
-  const colinfoNode = dataset.ColumnInfo;
-  if (colinfoNode && colinfoNode.length > 0)
-  {
-    content_string = '<ColumnInfo>';
+      content_string = '<ColumnInfo>';
 
-    const constcols = colinfoNode[0].ConstColumn;
-    const normalcols =colinfoNode[0].Column;
+      const columninfos = colinfoNode.elements;
 
-    if (constcols && constcols.length) {
-      constcols.forEach(colinfo => {
-        content_string += `<ConstColumn id=\\"${colinfo.$.id}\\" type=\\"${colinfo.$.type}\\" size=\\"${colinfo.$.size}\\"`;
-        if (colinfo.$.value) content_string += ` value=\\"${encodeXml(colinfo.$.value)}\\"`;
-        if (colinfo.$.datapath) content_string += ` datapath=\\"${colinfo.$.datapath}\\"`;
-        content_string += "/>";
-      });
-    }
-
-    if (normalcols && normalcols.length) {
-      normalcols.forEach(colinfo => {
-        content_string += `<Column id=\\"${colinfo.$.id}\\" type=\\"${colinfo.$.type}\\" size=\\"${colinfo.$.size}\\"`;
-        if (colinfo.$.datapath) content_string += ` datapath=\\"${colinfo.$.datapath}\\"`;
-        if (colinfo.$.prop) content_string += ` prop=\\"${colinfo.$.prop}\\"`;
-        if (colinfo.$.sumtext) content_string += ` sumtext=\\"${colinfo.$.sumtext}\\"`;
-        content_string += "/>";
-      });
-    }
-
-    content_string += '</ColumnInfo>';
-
-    const rowsNode = dataset.Rows;
-    if (rowsNode && rowsNode.length > 0) {
-      content_string += '<Rows>';
-
-      const rows = rowsNode[0].Row;
-      rows.forEach(rowinfo => {
-        content_string += "<Row>";
-
-        const cols = rowinfo.Col;
-        cols.forEach(col => (content_string += `<Col id=\\"${col.$.id}\\">${encodeXml(col._, true)}</Col>`));
-
-        content_string += "</Row>";
+      columninfos.forEach(colinfo => {
+        if (colinfo.name === "ConstColumn") {
+          content_string += `<ConstColumn id=\\"${colinfo.$.id}\\" type=\\"${colinfo.$.type}\\" size=\\"${colinfo.$.size}\\"`;
+          if (colinfo.$.value) content_string += ` value=\\"${encodeXml(colinfo.$.value)}\\"`;
+          if (colinfo.$.datapath) content_string += ` datapath=\\"${colinfo.$.datapath}\\"`;
+          content_string += "/>";
+        }
+        else if (colinfo.name === "Column") {
+          content_string += `<Column id=\\"${colinfo.$.id}\\" type=\\"${colinfo.$.type}\\" size=\\"${colinfo.$.size}\\"`;
+          if (colinfo.$.datapath) content_string += ` datapath=\\"${colinfo.$.datapath}\\"`;
+          if (colinfo.$.prop) content_string += ` prop=\\"${colinfo.$.prop}\\"`;
+          if (colinfo.$.sumtext) content_string += ` sumtext=\\"${colinfo.$.sumtext}\\"`;
+          content_string += "/>";
+        }
       });
 
-      content_string += '</Rows>';
-    }
+      content_string += '</ColumnInfo>';
 
-    code += `${left_pad}obj._setContents("${content_string}");\n`
+      const rowsNode = dataset.elements.find(element => element.name === "Rows");
+      if (rowsNode && rowsNode.elements) {
+        content_string += '<Rows>';
+
+        const rows = rowsNode.elements;
+        rows.forEach(rowinfo => {
+          content_string += "<Row>";
+
+          if (rowinfo.elements) {
+            const cols = rowinfo.elements.filter(element => element.name === "Col");
+            cols.forEach(col => {
+              var col_value = '';
+              if (col.elements && col.elements.length > 0) {
+                col_value = encodeXml(col.elements.find(element => element.type === "text")['_'], true);
+              }
+              content_string += `<Col id=\\"${col.$.id}\\">${col_value}</Col>`;
+            });
+          }
+
+          content_string += "</Row>";
+        });
+
+        content_string += '</Rows>';
+      }
+
+      code += `${left_pad}obj._setContents("${content_string}");\n`
+    }
   }
 
   if (event_code)
@@ -189,29 +197,31 @@ module.exports = function (resourcePath, appvarsNode, options, callback) {
   if (version < "2.0")
       return callback(new Error(`${version} is not support appvariables version. (should >= 2.0)`));
 
+  if (!appvarsNode.elements || appvarsNode.elements.length == 0)
+    return callback(new Error(`Cannot found 'appvariables' information.`));
+    
+  // dependency modules info
+  const modulesNode = appvarsNode.elements.find(element => element.name === "Datasets");
+  if (!modulesNode || !modulesNode.elements || modulesNode.elements.length == 0)
+    return callback(new Error(`Cannot found 'Modules' information in ${resourcePath}.`));
+      
   // datasets
   var datasets;
-  const datasetsNode = appvarsNode.Datasets;
-  if (datasetsNode && datasetsNode.length > 0)
-  {
-    datasets = datasetsNode[0].Dataset;
-  }
+  const datasetsNode = appvarsNode.elements.find(element => element.name === "Datasets");
+  if (datasetsNode)
+    datasets = datasetsNode.elements;
 
   // variables
   var variables;
-  const variablesNode = appvarsNode.Variables;
-  if (variablesNode && variablesNode.length > 0)
-  {
-    variables = variablesNode[0].Variable;
-  }
+  const variablesNode = appvarsNode.elements.find(element => element.name === "Variables");
+  if (variablesNode)
+    variables = variablesNode.elements;
 
   // DataObjects
   var dataobjects;
-  const dataobjectsNode = appvarsNode.DataObjects;
-  if (dataobjectsNode && dataobjectsNode.length > 0)
-  {
-    dataobjects = dataobjectsNode[0].DataObject;
-  }
+  const dataobjectsNode = appvarsNode.elements.find(element => element.name === "DataObjects");
+  if (dataobjectsNode)
+    dataobjects = dataobjectsNode.elements;
   
   const appvars_jsstring = template_appvariables_to_js(datasets, variables, dataobjects);
 

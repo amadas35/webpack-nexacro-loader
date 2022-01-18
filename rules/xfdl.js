@@ -2,6 +2,7 @@
 const path = require("path");  
 const transformXScript = require("./xscript-transform.js");
 const getQueryString = require("../utils/getquerystring.js");
+const encodeXml = require("../utils/xml-encoder.js");
 
 const form_prop_alias_map = {
     'id': 'name',
@@ -41,14 +42,187 @@ function isEventProp(name) {
     return event_prop_map.indexOf(name) > -1;
 }
 
+
+const dataobject_events = ['ondatachanged', 'onerror', 'onload', 'onsuccess', 'onvaluechanged'];
+const dataset_events = ['cancolumnchange', 'canrowposchange', 'oncolumnchanged', 'onload', 'onrowposchanged', 'onrowsetchanged', 'onvaluechanged'];
+
+function template_dataobject_to_js (dataobject, padleft) {
+  if (!dataobject || !dataobject.$)
+    return '';
+
+  var code = '', left_pad = padleft;
+  
+  // create
+  code += `${left_pad}obj = new DataObject("${dataobject.$.id}", this);\n`;
+
+  // set property
+  var event_code = '';
+  for (const prop in dataobject.$) {
+    if (prop === "id") continue;
+
+    const val = dataobject.$[prop];
+    if (dataobject_events.indexOf(prop) > -1 && val) {
+      event_code += `${left_pad}obj.addEventHandler("${prop}", this.${val}, this);\n`;
+    }
+    else {
+      code += `${left_pad}obj.set_${prop}("${val}");\n`;
+    }
+  }
+
+  // set contents
+  if (dataobject.elements) {
+    const contents = dataobject.elements.find(element => element.name === "Contents");
+    if (contents && contents.elements) {
+      contents.elements.forEach(content => (code += `${left_pad}obj._setContents(${content._});\n`));
+    }
+  }
+
+  if (event_code)
+    code += event_code;
+
+  code += `${left_pad}this.addChild(obj.name, obj);\n`;
+
+  return code;
+}
+
+function template_dataset_to_js (dataset, padleft) {
+  if (!dataset || !dataset.$)
+    return '';
+
+  var code = '', left_pad = padleft;
+  
+  // create
+  code += `${left_pad}obj = new Dataset("${dataset.$.id}", this);\n`;
+
+  // set property
+  var event_code = '';
+  for (const prop in dataset.$) {
+    if (prop === "id") continue;
+
+    const val = dataset.$[prop];
+    if (dataset_events.indexOf(prop) > -1 && val) {
+      event_code += `${left_pad}obj.addEventHandler("${prop}", this.${val}, this);\n`;
+    }
+    else {
+      code += `${left_pad}obj.set_${prop}("${val}");\n`;
+    }
+  }
+
+  // set contents
+  if (dataset.elements) {
+    const colinfoNode = dataset.elements.find(element => element.name === "ColumnInfo");
+    if (colinfoNode && colinfoNode.elements) {
+      var content_string;
+
+      content_string = '<ColumnInfo>';
+
+      const columninfos = colinfoNode.elements;
+
+      columninfos.forEach(colinfo => {
+        if (colinfo.name === "ConstColumn") {
+          content_string += `<ConstColumn id=\\"${colinfo.$.id}\\" type=\\"${colinfo.$.type}\\" size=\\"${colinfo.$.size}\\"`;
+          if (colinfo.$.value) content_string += ` value=\\"${encodeXml(colinfo.$.value)}\\"`;
+          if (colinfo.$.datapath) content_string += ` datapath=\\"${colinfo.$.datapath}\\"`;
+          content_string += "/>";
+        }
+        else if (colinfo.name === "Column") {
+          content_string += `<Column id=\\"${colinfo.$.id}\\" type=\\"${colinfo.$.type}\\" size=\\"${colinfo.$.size}\\"`;
+          if (colinfo.$.datapath) content_string += ` datapath=\\"${colinfo.$.datapath}\\"`;
+          if (colinfo.$.prop) content_string += ` prop=\\"${colinfo.$.prop}\\"`;
+          if (colinfo.$.sumtext) content_string += ` sumtext=\\"${colinfo.$.sumtext}\\"`;
+          content_string += "/>";
+        }
+      });
+
+      content_string += '</ColumnInfo>';
+
+      const rowsNode = dataset.elements.find(element => element.name === "Rows");
+      if (rowsNode && rowsNode.elements) {
+        content_string += '<Rows>';
+
+        const rows = rowsNode.elements;
+        rows.forEach(rowinfo => {
+          content_string += "<Row>";
+
+          if (rowinfo.elements) {
+            const cols = rowinfo.elements.filter(element => element.name === "Col");
+            cols.forEach(col => {
+              var col_value = '';
+              if (col.elements && col.elements.length > 0) {
+                col_value = encodeXml(col.elements.find(element => element.type === "text")['_'], true);
+              }
+              content_string += `<Col id=\\"${col.$.id}\\">${col_value}</Col>`;
+            });
+          }
+
+          content_string += "</Row>";
+        });
+
+        content_string += '</Rows>';
+      }
+
+      code += `${left_pad}obj._setContents("${content_string}");\n`
+    }
+  }
+
+  if (event_code)
+    code += event_code;
+  
+  code += `${left_pad}this.addChild(obj.name, obj);\n`;
+
+  return code;
+}
+
+function template_object_to_js (object, padleft) {
+  if (!object || !object.$)
+    return '';
+
+  var code = '';
+
+  // create
+  code += `${padleft}obj = new ${object.name}("${object.$.id}", this);\n`;
+
+  // set property
+  var event_code = '';
+  for (const prop in object.$) {
+    if (prop === "id") continue;
+
+    const val = object.$[prop];
+    //if (dataset_events.indexOf(prop) > -1 && val) {
+    //  event_code += `${padleft}obj.addEventHandler("${prop}", this.${val}, this);\n`;
+    //}
+    //else {
+    //  code += `${padleft}obj.set_${prop}("${val}");\n`;
+    //}
+    code += `${padleft}obj.set_${prop}("${val}");\n`;
+  }
+  
+  if (event_code)
+    code += event_code;
+  
+  code += `${padleft}this.addChild(obj.name, obj);\n`;
+  
+  return code;
+}
+
 function template_objects_to_js (objects, padleft) {
-    if (!objects || objects.length === 0)
+    if (!objects || !objects.elements)
       return '';
     
+    //parseString
     var code = '';
   
-    //types.forEach((type, idx, thisArray) => (code += `${padleft}${JSON.stringify(type.$, ["id", "classname", "type"])}${(idx < thisArray.length -1) ? ",\n" : ""}`));
-  
+    objects.elements.forEach(element => {
+      if (element.name === "Dataset") {
+        code += (template_dataset_to_js(element, padleft) + "\n");
+      }
+      else if (element.name === "DataObject") { // for contents object
+        code += (template_dataobject_to_js(element, padleft) + "\n");
+      }
+      else {
+        code += (template_object_to_js(element, padleft) + "\n");
+      }
+    });
     return code;
 }
 
@@ -191,11 +365,12 @@ module.exports = function (resourcePath, fdlNode, options, callback) {
     if (version < "2.0")
         return callback(new Error(`${version} is not support XFDL version. (should >= 2.0)`))
   
-    const forms = fdlNode.Form;
-    if (!forms || forms.length == 0)
-        return callback(new Error(`Cannot found 'Form' information.`));
-  
-    const form = forms[0];
+    if (!fdlNode.elements || fdlNode.elements.length == 0)
+      return callback(new Error(`Cannot found Form information.`));
+
+    const form = fdlNode.elements.find(element => element.name === "Form");
+    if (!form)
+        return callback(new Error(`Cannot found Form information.`));
 
     // check metainfo
     // - is property
@@ -227,40 +402,50 @@ ${padleft}}`;
     }
 
     const source_uri = path.basename(resourcePath);
+    var layoutsNode, objectsNode, source_code;
 
-    const script_node = fdlNode.Script;
-    var source_code;
-    if (script_node) {
-      const script_str = script_node[0]['_'];
-      const padleft = left_whitespace.padEnd(2, left_whitespace);
-  
-      // xscript transform
-      var code = '';
-      const transformed_script = transformXScript(source_uri, script_str);
-      if (transformed_script)
-      {
-        const includes = transformed_script.includes;
-        if (includes && includes.length > 0)
-        {
-            includes.forEach(include_src => {
-                code += `${padleft}this.addIncludeScript("${source}", "${include_src}");\n`;
-                modules.push(`${include_src}${getQueryString({"usebase":true, "ext":"js"})}`);
-            });            
+    if (form.elements) {
+      const script_node = form.elements.find(element => element.name === "Script");
+
+      if (script_node && script_node.elements) {
+        const cdata_node = script_node.elements.find(element => element.type === "cdata");
+
+        if (cdata_node) {
+          const script_str = cdata_node._;
+          const padleft = left_whitespace.padEnd(2, left_whitespace);
+      
+          // xscript transform
+          var code = '';
+          const transformed_script = transformXScript(source_uri, script_str);
+          if (transformed_script)
+          {
+            const includes = transformed_script.includes;
+            if (includes && includes.length > 0)
+            {
+                includes.forEach(include_src => {
+                    code += `${padleft}this.addIncludeScript("${source}", "${include_src}");\n`;
+                    modules.push(`${include_src}${getQueryString({"usebase":true, "ext":"js"})}`);
+                });            
+            }
+
+            code += `${padleft}this.registerScript("${source_uri}", function () {
+${transformed_script.code}
+});`;
+          }
+
+          source_code = code;
         }
-
-        code += `${padleft}this.registerScript("${source}", function () {
-            ${transformed_script.code}
-        });`;
       }
 
-      source_code = code;
+      layoutsNode = form.elements.find(element => element.name === "Layouts");
+      objectsNode = form.elements.find(element => element.name === "Objects");
     }
   
     const xfdl_jsstring = template_xfdl_to_js(
         source_uri,
         init_prop_str, 
-        form.Objects, 
-        form.Layouts, 
+        objectsNode, 
+        layoutsNode, 
         null, 
         null, 
         source_code,

@@ -63,7 +63,7 @@ function template_envjs (env_props, env_events, env_vars, env_cookies, env_heade
 
 	};
 
-    ${source_code}
+  ${source_code}
 
     env = null;
 }`;
@@ -79,11 +79,12 @@ module.exports = function (resourcePath, envNode, options, callback) {
   if (version < "2.1")
       return callback(new Error(`${version} is not support environment version. (should >= 2.1)`))
 
-  const environments = envNode.Environment;
-  if (!environments || environments.length == 0)
-      return callback(new Error(`Cannot found 'environment' information.`));
+  if (!envNode.elements || envNode.elements.length == 0)
+    return callback(new Error(`Cannot found 'environment' information.`));
 
-  const environment = environments[0];
+  const environment = envNode.elements.find(element => element.name === "Environment");
+  if (!environment)
+      return callback(new Error(`Cannot found 'environment' information.`));
 
   var init_env_str = '', init_event_str = '';
   if (environment)
@@ -97,17 +98,16 @@ module.exports = function (resourcePath, envNode, options, callback) {
     });
   }
 
-  var env_vars, env_cookies, env_headers, env_adaptors;
+  var env_vars, env_cookies, env_headers, env_adaptors, source_code;
 
-  const script_node = envNode.Script;
-  var source_code;
-  if (script_node) {
+  const script_node = envNode.elements.find(element => element.name === "Script");
+  if (script_node && script_node.elements) {
     const base = path.basename(resourcePath);
     const dir = path.dirname(resourcePath);
     const folder = options && options.projectRoot ? path.relative(options.projectRoot, dir) : "";
 
     const source_uri = folder ? `${folder}/${base}` : `${base}`;
-    const script_str = script_node[0]['_'];
+    const script_str = script_node.elements[0]['_'];
 
     // xscript transform
     source_code = template_xscript(source_uri || "environment.xml", script_str);
