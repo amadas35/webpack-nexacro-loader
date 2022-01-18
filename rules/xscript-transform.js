@@ -1,5 +1,5 @@
 const path = require("path");
-const { parse, traverse, transformFromAstSync } = require("@babel/core");
+const { parse, traverse, transformFromAstSync, transformSync } = require("@babel/core");
 const parseXScript = require("./xscript-parser.js");
 
 const transform_template = function transform_include(source) {
@@ -29,6 +29,9 @@ function transformXScript(source, script_str) {
     //const result = babel.generate(ast, script_str);
     const result = transformFromAstSync(ast, script_str, {
         configFile: false,
+        plugins: [
+            "@babel/plugin-transform-typescript",
+        ]
     });
 
     //TODO: tranpile xscript by using babel-loader

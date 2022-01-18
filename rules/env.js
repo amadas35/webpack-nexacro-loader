@@ -90,9 +90,9 @@ module.exports = function (resourcePath, envNode, options, callback) {
   {
     Object.keys(environment.$).forEach(key => {
       if (isEventProp(key)) {
-        init_event_str += `this.addEventHandler("${key}", this.${environment[key]}, this);\n`;
+        init_event_str += `this.addEventHandler("${key}", this.${environment.$[key]}, this);\n`;
       } else {
-        init_env_str += `this.set_${key}("${environment[key]}");\n`;
+        init_env_str += `this.set_${key}("${environment.$[key]}");\n`;
       }
     });
   }

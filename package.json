@@ -21,12 +21,13 @@
     "@babel/core": "^7.16.5",
     "@babel/nexacro-parser": "file:../../babel/packages/babel-nexacro-parser",
     "@babel/plugin-syntax-typescript": "^7.16.7",
-    "@babel/plugin-transform-typescript": "^7.16.1",
+    "@babel/plugin-transform-typescript": "^7.16.8",
     "@babel/preset-typescript": "^7.16.7",
     "loader-utils": "^3.2.0",
     "postcss": "^8.4.5",
     "postcss-loader": "^6.2.1",
     "typescript": "^4.5.4",
+    "xml-js": "^1.6.11",
     "xml-loader": "^1.2.1",
     "xml2js": "^0.4.23"
   }
